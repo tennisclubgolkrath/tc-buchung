@@ -15,7 +15,7 @@
     const TIME_START   = 7;
     const TIME_END     = 22;
     const SLOT_STEP    = 0.5;
-    const MAX_PER_DAY  = 2;
+    const MAX_PER_DAY  = 4;
     const MAX_DAYS     = 14;
     const ADMIN_EMAIL  = 'tennisclubgolkrath@gmail.com';
 
