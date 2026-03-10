@@ -16,6 +16,7 @@
     const TIME_END     = 22;
     const SLOT_STEP    = 0.5;
     const MAX_PER_DAY  = 4;
+    const MAX_TOTAL    = 3;
     const MAX_DAYS     = 14;
     const ADMIN_EMAIL  = 'tennisclubgolkrath@gmail.com';
 
@@ -403,7 +404,20 @@
                 .get();
 
             if (mySnap.size >= MAX_PER_DAY) {
-                toast(`Max. ${MAX_PER_DAY} Buchungen pro Tag.`, 'error');
+                toast(`Max. 2 Stunden pro Tag.`, 'error');
+                hideLoading();
+                return;
+            }
+
+            // Gesamtbuchungen pruefen (nur zukuenftige)
+            const todayStr = formatDate(today);
+            const totalSnap = await db.collection('bookings')
+                .where('userId', '==', currentUser.uid)
+                .where('date', '>=', todayStr)
+                .get();
+
+            if (totalSnap.size >= MAX_TOTAL) {
+                toast(`Max. ${MAX_TOTAL} aktive Buchungen insgesamt.`, 'error');
                 hideLoading();
                 return;
             }
