@@ -417,6 +417,7 @@ a { color: var(--accent); text-decoration: none; }
     overflow-x: auto;
     overflow-y: auto;
     flex: 1 1 auto;
+    -webkit-overflow-scrolling: touch;
 }
 
 .booking-grid {
@@ -761,7 +762,19 @@ a { color: var(--accent); text-decoration: none; }
 
 /* ── Responsive ────────────────────────────────────────── */
 @media (max-width: 768px) {
-    html { font-size: 14px; }
+    html { font-size: 14px; overflow: auto; }
+    body { height: auto; }
+
+    #mainView {
+        height: auto;
+        min-height: 100vh;
+        min-height: 100dvh;
+    }
+
+    .grid-wrapper {
+        overflow-y: visible;
+        flex: none;
+    }
 
     .app-header {
         flex-direction: column;
