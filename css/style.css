@@ -35,7 +35,6 @@
 html {
     font-size: 15px;
     -webkit-text-size-adjust: 100%;
-    overflow: hidden;
     height: 100%;
 }
 
@@ -46,7 +45,6 @@ body {
     line-height: 1.5;
     height: 100%;
     overflow-x: hidden;
-    overflow-y: auto;
     scrollbar-width: none;            /* Firefox */
     -ms-overflow-style: none;         /* IE/Edge */
 }
@@ -267,6 +265,7 @@ a { color: var(--accent); text-decoration: none; }
     flex-direction: column;
     height: 100vh;
     height: 100dvh;
+    overflow: hidden;
 }
 
 /* ── App-Header ────────────────────────────────────────── */
@@ -762,13 +761,14 @@ a { color: var(--accent); text-decoration: none; }
 
 /* ── Responsive ────────────────────────────────────────── */
 @media (max-width: 768px) {
-    html { font-size: 14px; overflow: auto; }
+    html { font-size: 14px; }
     body { height: auto; }
 
     #mainView {
         height: auto;
         min-height: 100vh;
         min-height: 100dvh;
+        overflow: visible;
     }
 
     .grid-wrapper {
