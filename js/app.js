@@ -25,6 +25,7 @@
     let userProfile   = null;   // Firestore user doc
     let selectedDate  = new Date();
     let activeCourt   = 0;      // Mobile-Tab
+    let blockedSlots  = [];     // Sperrzeiten-Cache
 
     /* ── DOM Refs ──────────────────────────────────────── */
     const $ = id => document.getElementById(id);
@@ -171,12 +172,51 @@
         authView.style.display = 'none';
         mainView.style.display = '';
         displayName.textContent = userProfile.firstName + ' ' + userProfile.lastName;
+        const mdn = $('mobileDisplayName');
+        if (mdn) mdn.textContent = userProfile.firstName;
         $('btnAdmin').style.display = userProfile.role === 'admin' ? '' : 'none';
+        const adminMobile = $('btnAdminMobile');
+        if (adminMobile) adminMobile.style.display = userProfile.role === 'admin' ? '' : 'none';
         resetToToday();
     }
 
     // Logout
     $('btnLogout').addEventListener('click', () => auth.signOut());
+
+    // ── Mobile Menu ──────────────────────────────────────
+    (function initMobileMenu() {
+        const menuBtn = $('btnMobileMenu');
+        const menu    = $('mobileMenu');
+        if (!menuBtn || !menu) return;
+
+        menuBtn.addEventListener('click', () => {
+            menu.classList.toggle('open');
+        });
+
+        // Menue schliessen bei Klick ausserhalb
+        document.addEventListener('click', e => {
+            if (!menu.contains(e.target) && e.target !== menuBtn) {
+                menu.classList.remove('open');
+            }
+        });
+
+        $('btnMyBookingsMobile').addEventListener('click', () => {
+            menu.classList.remove('open');
+            $('btnMyBookings').click();
+        });
+        $('btnPasswordMobile').addEventListener('click', () => {
+            menu.classList.remove('open');
+            $('btnPassword').click();
+        });
+        $('btnAdminMobile').addEventListener('click', () => {
+            menu.classList.remove('open');
+            $('btnAdmin').click();
+        });
+        $('btnLogoutMobile').addEventListener('click', () => {
+            menu.classList.remove('open');
+            auth.signOut();
+        });
+    })();
 
     /* ══════════════════════════════════════════════════════
        DATUM-NAVIGATION
@@ -282,15 +322,34 @@
         showLoading();
         const dateStr = formatDate(selectedDate);
         try {
-            const snap = await db.collection('bookings')
-                .where('date', '==', dateStr)
-                .get();
-            lastBookings = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+            // Buchungen und Sperrzeiten parallel laden
+            const [bookSnap, blockSnap] = await Promise.all([
+                db.collection('bookings').where('date', '==', dateStr).get(),
+                db.collection('blockedSlots').get()
+            ]);
+            lastBookings = bookSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+            blockedSlots = blockSnap.docs.map(d => ({ id: d.id, ...d.data() }));
             renderGrid(lastBookings);
         } catch (err) {
             toast('Fehler beim Laden der Buchungen.', 'error');
         }
         hideLoading();
+    }
+
+    // Prueft ob ein Slot gesperrt ist
+    function getBlockReason(courtIdx, slot) {
+        const dayOfWeek = selectedDate.getDay(); // 0=So, 1=Mo, ...
+        const dateStr = formatDate(selectedDate);
+        for (const b of blockedSlots) {
+            // Platz pruefen
+            if (b.courtId !== 'all' && b.courtId !== courtIdx) continue;
+            // Typ pruefen
+            if (b.type === 'recurring' && b.dayOfWeek !== dayOfWeek) continue;
+            if (b.type === 'once' && b.date !== dateStr) continue;
+            // Zeitbereich pruefen
+            if (slot >= b.startTime && slot < b.endTime) return b.reason;
+        }
+        return null;
     }
 
     function renderGrid(bookings) {
@@ -301,6 +360,26 @@
         const dateStr  = formatDate(selectedDate);
         const isToday  = formatDate(now) === dateStr;
         const isPast   = selectedDate < new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+        // Freie Slots pro Platz zaehlen
+        const freeCount = [0, 0, 0];
+        for (let c = 0; c < 3; c++) {
+            for (let slot = TIME_START; slot < TIME_END; slot += SLOT_STEP) {
+                const h = Math.floor(slot);
+                const m = (slot % 1) * 60;
+                const nowMin = now.getHours() * 60 + now.getMinutes();
+                const slotMin = h * 60 + m;
+                const slotPast = isPast || (isToday && slotMin < nowMin);
+                if (slotPast) continue;
+                if (getBlockReason(c, slot)) continue;
+                const booked = bookings.find(b => b.courtId === c && b.timeSlot === slot);
+                if (!booked) freeCount[c]++;
+            }
+        }
+        for (let c = 0; c < 3; c++) {
+            const el = $('courtFree' + c);
+            if (el) el.textContent = freeCount[c] + ' frei';
+        }
 
         bookingGrid.style.gridTemplateColumns = `60px repeat(${courts.length}, 1fr)`;
         bookingGrid.innerHTML = '';
@@ -341,8 +420,12 @@
                 const booking  = bookings.find(b =>
                     b.courtId === courtIdx && b.timeSlot === slot
                 );
+                const blockReason = getBlockReason(courtIdx, slot);
 
-                if (slotPast) {
+                if (blockReason) {
+                    slotEl.classList.add('blocked');
+                    slotEl.innerHTML = `<span class="slot-name">${esc(blockReason)}</span>`;
+                } else if (slotPast) {
                     slotEl.classList.add('past');
                     if (booking) {
                         slotEl.innerHTML = `<span class="slot-name">${esc(booking.userName)}</span>`;
@@ -386,6 +469,13 @@
         const dateStr = formatDate(selectedDate);
         const today   = new Date();
         today.setHours(0, 0, 0, 0);
+
+        // Sperrzeit-Check
+        const blockReason = getBlockReason(courtId, timeSlot);
+        if (blockReason) {
+            toast('Dieser Slot ist gesperrt: ' + blockReason, 'error');
+            return;
+        }
 
         // Zukunfts-Check
         const maxDate = new Date(today);
@@ -563,6 +653,158 @@
     });
 
     /* ── Admin-Panel ───────────────────────────────────── */
+
+    // Admin-Tabs
+    const DAY_NAMES = ['Sonntag', 'Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag'];
+
+    document.querySelectorAll('.admin-tab').forEach(tab => {
+        tab.addEventListener('click', () => {
+            document.querySelectorAll('.admin-tab').forEach(t => t.classList.remove('active'));
+            tab.classList.add('active');
+            const isUsers = tab.dataset.adminTab === 'users';
+            $('adminTabUsers').style.display   = isUsers ? '' : 'none';
+            $('adminTabBlocked').style.display  = isUsers ? 'none' : '';
+            if (!isUsers) loadBlockedList();
+        });
+    });
+
+    // Sperrzeiten-Typ umschalten
+    $('blockedType').addEventListener('change', () => {
+        const isRecurring = $('blockedType').value === 'recurring';
+        $('blockedDayGroup').style.display  = isRecurring ? '' : 'none';
+        $('blockedDateGroup').style.display = isRecurring ? 'none' : '';
+    });
+
+    // Zeit-Dropdowns befuellen
+    (function populateTimeSelects() {
+        const startSel = $('blockedStart');
+        const endSel   = $('blockedEnd');
+        for (let t = TIME_START; t <= TIME_END; t += SLOT_STEP) {
+            const label = pad(Math.floor(t)) + ':' + pad((t % 1) * 60);
+            const optS = document.createElement('option');
+            optS.value = t;
+            optS.textContent = label;
+            startSel.appendChild(optS);
+            if (t > TIME_START) {
+                const optE = document.createElement('option');
+                optE.value = t;
+                optE.textContent = label;
+                endSel.appendChild(optE);
+            }
+        }
+        // Standard: 17:00 - 20:00
+        startSel.value = '17';
+        endSel.value = '20';
+    })();
+
+    // Sperrzeit anlegen
+    $('blockedForm').addEventListener('submit', async e => {
+        e.preventDefault();
+        const type      = $('blockedType').value;
+        const courtVal  = $('blockedCourt').value;
+        const startTime = parseFloat($('blockedStart').value);
+        const endTime   = parseFloat($('blockedEnd').value);
+        const reason    = $('blockedReason').value.trim();
+
+        if (startTime >= endTime) {
+            toast('Startzeit muss vor Endzeit liegen.', 'error');
+            return;
+        }
+        if (!reason) {
+            toast('Bitte einen Grund angeben.', 'error');
+            return;
+        }
+
+        const doc = {
+            type,
+            courtId:   courtVal === 'all' ? 'all' : parseInt(courtVal),
+            startTime,
+            endTime,
+            reason,
+            createdAt: firebase.firestore.FieldValue.serverTimestamp()
+        };
+
+        if (type === 'recurring') {
+            doc.dayOfWeek = parseInt($('blockedDay').value);
+        } else {
+            const dateVal = $('blockedDate').value;
+            if (!dateVal) {
+                toast('Bitte ein Datum waehlen.', 'error');
+                return;
+            }
+            doc.date = dateVal;
+        }
+
+        showLoading();
+        try {
+            await db.collection('blockedSlots').add(doc);
+            toast('Sperrzeit angelegt.', 'success');
+            $('blockedForm').reset();
+            $('blockedType').dispatchEvent(new Event('change'));
+            loadBlockedList();
+            loadBookings(); // Grid aktualisieren
+        } catch (err) {
+            toast('Fehler beim Anlegen.', 'error');
+        }
+        hideLoading();
+    });
+
+    // Sperrzeiten-Liste laden
+    async function loadBlockedList() {
+        const list = $('blockedList');
+        list.innerHTML = '<p class="empty-msg">Laden...</p>';
+        try {
+            const snap = await db.collection('blockedSlots').get();
+            if (snap.empty) {
+                list.innerHTML = '<p class="empty-msg">Keine Sperrzeiten vorhanden.</p>';
+                return;
+            }
+            list.innerHTML = '';
+            snap.docs.forEach(doc => {
+                const b = doc.data();
+                const courtLabel = b.courtId === 'all' ? 'Alle Plaetze' : COURTS[b.courtId];
+                const timeLabel  = pad(Math.floor(b.startTime)) + ':' + pad((b.startTime % 1) * 60)
+                    + ' - ' + pad(Math.floor(b.endTime)) + ':' + pad((b.endTime % 1) * 60);
+                let whenLabel;
+                if (b.type === 'recurring') {
+                    whenLabel = 'Jeden ' + DAY_NAMES[b.dayOfWeek];
+                } else {
+                    whenLabel = formatDateDE(b.date);
+                }
+
+                const item = document.createElement('div');
+                item.className = 'blocked-item';
+                item.innerHTML = `
+                    <div class="blocked-info">
+                        <span class="blocked-reason">${esc(b.reason)}</span>
+                        <span class="blocked-detail">${esc(whenLabel)} | ${esc(timeLabel)} | ${esc(courtLabel)}</span>
+                    </div>
+                `;
+                const delBtn = document.createElement('button');
+                delBtn.className = 'btn btn-sm';
+                delBtn.style.cssText = 'color:var(--danger);border-color:var(--danger)';
+                delBtn.textContent = 'Loeschen';
+                delBtn.addEventListener('click', async () => {
+                    if (!confirm('Sperrzeit wirklich loeschen?')) return;
+                    showLoading();
+                    try {
+                        await db.collection('blockedSlots').doc(doc.id).delete();
+                        toast('Sperrzeit geloescht.', 'success');
+                        loadBlockedList();
+                        loadBookings();
+                    } catch (err) {
+                        toast('Fehler beim Loeschen.', 'error');
+                    }
+                    hideLoading();
+                });
+                item.appendChild(delBtn);
+                list.appendChild(item);
+            });
+        } catch (err) {
+            list.innerHTML = '<p class="empty-msg">Fehler beim Laden.</p>';
+        }
+    }
+
     $('btnAdmin').addEventListener('click', async () => {
         openPanel('panelAdmin');
         const list = $('adminUserList');

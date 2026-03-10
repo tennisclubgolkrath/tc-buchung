@@ -93,6 +93,17 @@
             <button class="btn btn-sm btn-admin" id="btnAdmin" style="display:none">Admin</button>
             <button class="btn btn-sm" id="btnLogout">Abmelden</button>
         </div>
+        <!-- Mobile: kompakter Header mit Menue -->
+        <div class="mobile-header-right">
+            <span class="mobile-user" id="mobileDisplayName"></span>
+            <button class="btn-icon mobile-menu-btn" id="btnMobileMenu">&#9776;</button>
+        </div>
+        <div class="mobile-menu" id="mobileMenu">
+            <button class="mobile-menu-item" id="btnMyBookingsMobile">&#128196; Meine Buchungen</button>
+            <button class="mobile-menu-item" id="btnPasswordMobile">&#128274; Passwort</button>
+            <button class="mobile-menu-item mobile-admin-item" id="btnAdminMobile" style="display:none">&#9881; Admin</button>
+            <button class="mobile-menu-item mobile-menu-logout" id="btnLogoutMobile">&#10132; Abmelden</button>
+        </div>
     </header>
 
     <!-- Datum-Navigation -->
@@ -112,9 +123,18 @@
 
     <!-- Platz-Tabs (Mobile) -->
     <div class="court-tabs" id="courtTabs">
-        <button class="court-tab active" data-court="0">Platz 1</button>
-        <button class="court-tab" data-court="1">Platz 2</button>
-        <button class="court-tab" data-court="2">Platz 3</button>
+        <button class="court-tab active" data-court="0">
+            <span class="court-tab-name">Platz 1</span>
+            <span class="court-tab-free" id="courtFree0"></span>
+        </button>
+        <button class="court-tab" data-court="1">
+            <span class="court-tab-name">Platz 2</span>
+            <span class="court-tab-free" id="courtFree1"></span>
+        </button>
+        <button class="court-tab" data-court="2">
+            <span class="court-tab-name">Platz 3</span>
+            <span class="court-tab-free" id="courtFree2"></span>
+        </button>
     </div>
 
     <!-- Buchungsraster -->
@@ -127,6 +147,7 @@
         <div class="legend-item"><div class="legend-dot free"></div>Frei</div>
         <div class="legend-item"><div class="legend-dot own"></div>Eigene</div>
         <div class="legend-item"><div class="legend-dot booked"></div>Belegt</div>
+        <div class="legend-item"><div class="legend-dot blocked"></div>Gesperrt</div>
         <div class="legend-item"><div class="legend-dot past"></div>Vergangen</div>
     </div>
 
@@ -172,10 +193,69 @@
 <!-- ══════ Panel: Admin ══════ -->
 <div class="side-panel panel-wide" id="panelAdmin">
     <div class="panel-header">
-        <h2>Mitglieder verwalten</h2>
+        <h2>Admin</h2>
         <button class="btn-close" data-close="panelAdmin">&times;</button>
     </div>
-    <div class="panel-body" id="adminUserList"></div>
+    <div class="admin-tabs">
+        <button class="admin-tab active" data-admin-tab="users">Mitglieder</button>
+        <button class="admin-tab" data-admin-tab="blocked">Sperrzeiten</button>
+    </div>
+    <div class="panel-body" id="adminTabUsers">
+        <div id="adminUserList"></div>
+    </div>
+    <div class="panel-body" id="adminTabBlocked" style="display:none">
+        <form id="blockedForm" class="panel-form">
+            <div class="form-group">
+                <label for="blockedType">Art</label>
+                <select id="blockedType">
+                    <option value="recurring">Woechentlich (z.B. jeden Montag)</option>
+                    <option value="once">Einmalig (bestimmtes Datum)</option>
+                </select>
+            </div>
+            <div class="form-group" id="blockedDayGroup">
+                <label for="blockedDay">Wochentag</label>
+                <select id="blockedDay">
+                    <option value="1">Montag</option>
+                    <option value="2">Dienstag</option>
+                    <option value="3">Mittwoch</option>
+                    <option value="4">Donnerstag</option>
+                    <option value="5">Freitag</option>
+                    <option value="6">Samstag</option>
+                    <option value="0">Sonntag</option>
+                </select>
+            </div>
+            <div class="form-group" id="blockedDateGroup" style="display:none">
+                <label for="blockedDate">Datum</label>
+                <input type="date" id="blockedDate">
+            </div>
+            <div class="form-group">
+                <label for="blockedCourt">Platz</label>
+                <select id="blockedCourt">
+                    <option value="0">Platz 1</option>
+                    <option value="1">Platz 2</option>
+                    <option value="2">Platz 3</option>
+                    <option value="all">Alle Plaetze</option>
+                </select>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="blockedStart">Von (Uhr)</label>
+                    <select id="blockedStart"></select>
+                </div>
+                <div class="form-group">
+                    <label for="blockedEnd">Bis (Uhr)</label>
+                    <select id="blockedEnd"></select>
+                </div>
+            </div>
+            <div class="form-group">
+                <label for="blockedReason">Grund</label>
+                <input type="text" id="blockedReason" placeholder="z.B. Training Jugend, Instandsetzung..." required>
+            </div>
+            <button type="submit" class="btn btn-primary btn-full">Sperrzeit anlegen</button>
+        </form>
+        <h3 style="margin-top:1.5rem;margin-bottom:0.75rem">Aktive Sperrzeiten</h3>
+        <div id="blockedList"></div>
+    </div>
 </div>
 
 <!-- ══════ EmailJS SDK (kostenlos) ══════ -->
@@ -205,6 +285,19 @@
 </script>
 
 <script src="js/app.js"></script>
+
+<!-- iframe Auto-Height: sendet Seitenhoehe an Parent -->
+<script>
+(function(){
+    function sendHeight(){
+        var h = document.documentElement.scrollHeight;
+        window.parent.postMessage({type:'resize',height:h},'*');
+    }
+    window.addEventListener('load', sendHeight);
+    new MutationObserver(sendHeight).observe(document.body,{childList:true,subtree:true,attributes:true});
+    window.addEventListener('resize', sendHeight);
+})();
+</script>
 
 </body>
 </html>
