@@ -14,6 +14,7 @@
     const COURTS       = ['Platz 1', 'Platz 2', 'Platz 3'];
     const TIME_START   = 7;
     const TIME_END     = 22;
+    const SLOT_STEP    = 0.5;
     const MAX_PER_DAY  = 2;
     const MAX_DAYS     = 14;
     const ADMIN_EMAIL  = 'tennisclubgolkrath@gmail.com';
@@ -108,7 +109,7 @@
             });
             notifyAdmin(firstName, lastName, email);
             auth.signOut();
-            toast('Registrierung erfolgreich! Dein Konto muss erst vom Administrator freigeschaltet werden.', 'info');
+            toast('Registrierung erfolgreich! Der Admin wird informiert und schaltet dein Konto frei.', 'info');
             hideLoading();
         } catch (err) {
             toast(mapAuthError(err.code), 'error');
@@ -136,7 +137,7 @@
                     createdAt: firebase.firestore.FieldValue.serverTimestamp()
                 });
                 notifyAdmin(firstName, lastName, email);
-                toast('Registrierung erfolgreich! Dein Konto muss erst vom Administrator freigeschaltet werden.', 'info');
+                toast('Registrierung erfolgreich! Der Admin wird informiert und schaltet dein Konto frei.', 'info');
                 auth.signOut();
                 hideLoading();
                 return;
@@ -191,11 +192,58 @@
         const opts = { weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric' };
         dateText.textContent = selectedDate.toLocaleDateString('de-DE', opts);
         datePicker.value = formatDate(selectedDate);
+        updateCalStrip();
     }
 
     $('btnPrevDay').addEventListener('click', () => changeDay(-1));
     $('btnNextDay').addEventListener('click', () => changeDay(1));
     $('btnToday').addEventListener('click', resetToToday);
+
+    // Kalender-Toggle
+    $('btnToggleCal').addEventListener('click', () => {
+        const strip = $('calStrip');
+        const isHidden = strip.style.display === 'none';
+        strip.style.display = isHidden ? 'flex' : 'none';
+        $('btnToggleCal').textContent = isHidden ? 'Kalender ▲' : 'Kalender';
+        if (isHidden) renderCalStrip();
+    });
+
+    function renderCalStrip() {
+        const strip = $('calStrip');
+        strip.innerHTML = '';
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const dayNames = ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa'];
+        const monthNames = ['Jan', 'Feb', 'Mär', 'Apr', 'Mai', 'Jun', 'Jul', 'Aug', 'Sep', 'Okt', 'Nov', 'Dez'];
+
+        for (let i = 0; i <= MAX_DAYS; i++) {
+            const d = new Date(today);
+            d.setDate(d.getDate() + i);
+            const btn = document.createElement('div');
+            btn.className = 'cal-day';
+            if (formatDate(d) === formatDate(selectedDate)) btn.classList.add('active');
+            if (i === 0) btn.classList.add('today');
+            btn.innerHTML = `<span class="cal-day-name">${dayNames[d.getDay()]}</span><span class="cal-day-num">${d.getDate()}</span><span class="cal-day-month">${monthNames[d.getMonth()]}</span>`;
+            btn.addEventListener('click', () => {
+                selectedDate = new Date(d);
+                updateDateDisplay();
+                loadBookings();
+            });
+            strip.appendChild(btn);
+        }
+    }
+
+    function updateCalStrip() {
+        const strip = $('calStrip');
+        if (strip.style.display === 'none') return;
+        strip.querySelectorAll('.cal-day').forEach((el, i) => {
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            const d = new Date(today);
+            d.setDate(d.getDate() + i);
+            el.classList.toggle('active', formatDate(d) === formatDate(selectedDate));
+        });
+    }
 
     datePicker.addEventListener('change', e => {
         const parts = e.target.value.split('-');
@@ -270,47 +318,54 @@
         });
 
         // Zeilen
-        for (let hour = TIME_START; hour < TIME_END; hour++) {
+        for (let slot = TIME_START; slot < TIME_END; slot += SLOT_STEP) {
+            const h = Math.floor(slot);
+            const m = (slot % 1) * 60;
+            const endSlot = slot + SLOT_STEP;
+            const eh = Math.floor(endSlot);
+            const em = (endSlot % 1) * 60;
             // Zeit-Zelle
             const timeCell = document.createElement('div');
             timeCell.className = 'grid-time';
-            timeCell.innerHTML = `${pad(hour)}:00<span class="time-end">${pad(hour + 1)}:00</span>`;
+            timeCell.innerHTML = `${pad(h)}:${pad(m)}<span class="time-end">${pad(eh)}:${pad(em)}</span>`;
             bookingGrid.appendChild(timeCell);
 
             courts.forEach(courtIdx => {
-                const slot = document.createElement('div');
-                slot.className = 'grid-slot';
+                const slotEl = document.createElement('div');
+                slotEl.className = 'grid-slot';
 
-                const slotPast = isPast || (isToday && hour < now.getHours());
+                const nowMinutes = now.getHours() * 60 + now.getMinutes();
+                const slotMinutes = h * 60 + m;
+                const slotPast = isPast || (isToday && slotMinutes < nowMinutes);
                 const booking  = bookings.find(b =>
-                    b.courtId === courtIdx && b.timeSlot === hour
+                    b.courtId === courtIdx && b.timeSlot === slot
                 );
 
                 if (slotPast) {
-                    slot.classList.add('past');
+                    slotEl.classList.add('past');
                     if (booking) {
-                        slot.innerHTML = `<span class="slot-name">${esc(booking.userName)}</span>`;
+                        slotEl.innerHTML = `<span class="slot-name">${esc(booking.userName)}</span>`;
                     } else {
-                        slot.textContent = '-';
+                        slotEl.textContent = '-';
                     }
                 } else if (booking) {
                     const isOwn = booking.userId === currentUser.uid;
-                    slot.classList.add(isOwn ? 'own' : 'booked');
-                    slot.innerHTML = `<span class="slot-name">${esc(booking.userName)}</span>`;
+                    slotEl.classList.add(isOwn ? 'own' : 'booked');
+                    slotEl.innerHTML = `<span class="slot-name">${esc(booking.userName)}</span>`;
                     if (isOwn) {
                         const btn = document.createElement('button');
                         btn.className = 'btn-cancel';
                         btn.textContent = 'Stornieren';
                         btn.addEventListener('click', () => cancelBooking(booking.id));
-                        slot.appendChild(btn);
+                        slotEl.appendChild(btn);
                     }
                 } else {
-                    slot.classList.add('free');
-                    slot.textContent = 'Frei';
-                    slot.addEventListener('click', () => bookSlot(courtIdx, hour));
+                    slotEl.classList.add('free');
+                    slotEl.textContent = 'Frei';
+                    slotEl.addEventListener('click', () => bookSlot(courtIdx, slot));
                 }
 
-                bookingGrid.appendChild(slot);
+                bookingGrid.appendChild(slotEl);
             });
         }
     }
@@ -447,7 +502,7 @@
                 item.innerHTML = `
                     <div class="my-booking-info">
                         <span class="my-booking-date">${formatDateDE(b.date)}</span>
-                        <span class="my-booking-time">${pad(b.timeSlot)}:00 - ${pad(b.timeSlot + 1)}:00</span>
+                        <span class="my-booking-time">${formatSlotTime(b.timeSlot)}</span>
                         <span class="my-booking-court">${COURTS[b.courtId]}</span>
                     </div>
                     <button class="btn btn-sm" style="color:var(--danger);border-color:var(--danger)">Stornieren</button>
@@ -572,7 +627,15 @@
     }
 
     function pad(n) {
-        return String(n).padStart(2, '0');
+        return String(Math.floor(n)).padStart(2, '0');
+    }
+
+    function formatSlotTime(slot) {
+        const h = Math.floor(slot);
+        const m = (slot % 1) * 60;
+        const eh = Math.floor(slot + SLOT_STEP);
+        const em = ((slot + SLOT_STEP) % 1) * 60;
+        return pad(h) + ':' + pad(m) + ' - ' + pad(eh) + ':' + pad(em);
     }
 
     function esc(str) {
