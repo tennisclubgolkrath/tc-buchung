@@ -35,6 +35,8 @@
 html {
     font-size: 15px;
     -webkit-text-size-adjust: 100%;
+    overflow: hidden;
+    height: 100%;
 }
 
 body {
@@ -42,8 +44,14 @@ body {
     background: var(--bg-body);
     color: var(--text);
     line-height: 1.5;
-    min-height: 100vh;
+    height: 100%;
     overflow-x: hidden;
+    overflow-y: auto;
+    scrollbar-width: none;            /* Firefox */
+    -ms-overflow-style: none;         /* IE/Edge */
+}
+body::-webkit-scrollbar {
+    display: none;                    /* Chrome/Safari/Opera */
 }
 
 /* ── Typografie ────────────────────────────────────────── */
